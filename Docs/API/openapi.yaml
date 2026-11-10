@@ -1,0 +1,973 @@
+openapi: 3.0.3
+info:
+  title: VittaCare API
+  version: 1.0.0
+  description: |
+    Contrato da API REST do VittaCare (Bloco 8). Proposta de documentação técnica para o desenvolvimento;
+    os endpoints ainda não estão implementados.
+
+    **Regras gerais**
+    - Formato JSON, datas em ISO-8601 (`OffsetDateTime`), identificadores UUID.
+    - Autenticação por JWT Bearer. O token contém perfil e clínica do usuário.
+    - **O `clinicaId` nunca é aceito como prova de autorização**: o back-end usa a clínica do token (RF025, RNF014).
+      A única exceção é o autorregistro anônimo de paciente, que informa a clínica de destino.
+    - Todas as listagens aceitam `page` (a partir de 0) e `size`.
+servers:
+  - url: http://localhost:8080/api/v1
+    description: Desenvolvimento local
+  - url: https://{host}/api/v1
+    description: Staging e produção
+    variables:
+      host:
+        default: staging.vittacare.example
+tags:
+  - name: Autenticação
+  - name: Usuários e permissões
+  - name: Pacientes
+  - name: Profissionais
+  - name: Especialidades
+  - name: Disponibilidades
+  - name: Agendamentos
+  - name: Atendimentos
+  - name: Relatórios
+security:
+  - bearerAuth: []
+
+paths:
+  /auth/login:
+    post:
+      tags: [Autenticação]
+      summary: Autenticar usuário (RF001)
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/LoginRequest' }
+      responses:
+        '200':
+          description: Autenticado
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/LoginResponse' }
+        '400': { $ref: '#/components/responses/RequisicaoInvalida' }
+        '401': { $ref: '#/components/responses/NaoAutenticado' }
+
+  /auth/senha/recuperacao:
+    post:
+      tags: [Autenticação]
+      summary: Solicitar redefinição de senha (RF002)
+      description: Responde 202 mesmo que o e-mail não exista, para não revelar cadastros.
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [email]
+              properties:
+                email: { type: string, format: email }
+                clinicaId: { type: string, format: uuid, description: "Necessário apenas se o mesmo e-mail existir em mais de uma clínica." }
+      responses:
+        '202': { description: Solicitação recebida }
+        '400': { $ref: '#/components/responses/RequisicaoInvalida' }
+
+  /auth/senha/redefinicao:
+    post:
+      tags: [Autenticação]
+      summary: Redefinir senha com o token recebido (RF002)
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [token, novaSenha]
+              properties:
+                token: { type: string }
+                novaSenha: { type: string, format: password, minLength: 8 }
+      responses:
+        '204': { description: Senha redefinida }
+        '400': { $ref: '#/components/responses/RequisicaoInvalida' }
+
+  /usuarios:
+    post:
+      tags: [Usuários e permissões]
+      summary: Cadastrar conta de usuário (RF003). Perfil ADMINISTRADOR
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/UsuarioCreate' }
+      responses:
+        '201':
+          description: Criado
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Usuario' }
+        '400': { $ref: '#/components/responses/RequisicaoInvalida' }
+        '401': { $ref: '#/components/responses/NaoAutenticado' }
+        '403': { $ref: '#/components/responses/SemPermissao' }
+        '409': { $ref: '#/components/responses/Conflito' }
+    get:
+      tags: [Usuários e permissões]
+      summary: Listar usuários da clínica. Perfil ADMINISTRADOR
+      parameters:
+        - { $ref: '#/components/parameters/Page' }
+        - { $ref: '#/components/parameters/Size' }
+      responses:
+        '200':
+          description: Lista de usuários
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/Usuario' }
+        '401': { $ref: '#/components/responses/NaoAutenticado' }
+        '403': { $ref: '#/components/responses/SemPermissao' }
+
+  /usuarios/me:
+    get:
+      tags: [Usuários e permissões]
+      summary: Consultar os próprios dados (RF004)
+      responses:
+        '200':
+          description: Dados do usuário autenticado
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Usuario' }
+        '401': { $ref: '#/components/responses/NaoAutenticado' }
+    patch:
+      tags: [Usuários e permissões]
+      summary: Atualizar os próprios dados (RF004)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                nome: { type: string, maxLength: 160 }
+                telefone: { type: string, maxLength: 25 }
+      responses:
+        '200':
+          description: Atualizado
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Usuario' }
+        '400': { $ref: '#/components/responses/RequisicaoInvalida' }
+        '401': { $ref: '#/components/responses/NaoAutenticado' }
+
+  /usuarios/{id}/status:
+    patch:
+      tags: [Usuários e permissões]
+      summary: Ativar ou desativar conta (RF003). Perfil ADMINISTRADOR
+      parameters:
+        - { $ref: '#/components/parameters/IdPath' }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [status]
+              properties:
+                status: { $ref: '#/components/schemas/StatusUsuario' }
+      responses:
+        '200':
+          description: Status atualizado
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Usuario' }
+        '401': { $ref: '#/components/responses/NaoAutenticado' }
+        '403': { $ref: '#/components/responses/SemPermissao' }
+        '404': { $ref: '#/components/responses/NaoEncontrado' }
+
+  /usuarios/{id}/papeis:
+    put:
+      tags: [Usuários e permissões]
+      summary: Definir papéis do usuário (RF024). Perfil ADMINISTRADOR
+      parameters:
+        - { $ref: '#/components/parameters/IdPath' }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [papeis]
+              properties:
+                papeis:
+                  type: array
+                  items: { $ref: '#/components/schemas/PerfilUsuario' }
+      responses:
+        '200':
+          description: Papéis atualizados
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Usuario' }
+        '401': { $ref: '#/components/responses/NaoAutenticado' }
+        '403': { $ref: '#/components/responses/SemPermissao' }
+        '404': { $ref: '#/components/responses/NaoEncontrado' }
+
+  /pacientes:
+    post:
+      tags: [Pacientes]
+      summary: Cadastrar paciente (RF005)
+      description: |
+        Sem token: autorregistro, e o `clinicaId` é obrigatório.
+        Com token de RECEPCIONISTA ou ADMINISTRADOR: cadastro presencial, e vale a clínica do token (o `clinicaId` do corpo é ignorado).
+        Primeiro acesso de paciente cadastrado pela recepção (sem senha): fluxo a confirmar com o PO; sugestão: definir a senha pela recuperação de senha.
+      security:
+        - {}
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/PacienteCreate' }
+      responses:
+        '201':
+          description: Criado
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Paciente' }
+        '400': { $ref: '#/components/responses/RequisicaoInvalida' }
+        '403': { $ref: '#/components/responses/SemPermissao' }
+        '409': { $ref: '#/components/responses/Conflito' }
+    get:
+      tags: [Pacientes]
+      summary: Pesquisar pacientes (RF006). Perfis RECEPCIONISTA e ADMINISTRADOR
+      parameters:
+        - { name: nome, in: query, schema: { type: string } }
+        - { $ref: '#/components/parameters/Page' }
+        - { $ref: '#/components/parameters/Size' }
+      responses:
+        '200':
+          description: Lista de pacientes
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/Paciente' }
+        '401': { $ref: '#/components/responses/NaoAutenticado' }
+        '403': { $ref: '#/components/responses/SemPermissao' }
+
+  /pacientes/{id}:
+    get:
+      tags: [Pacientes]
+      summary: Consultar paciente (RF006). O paciente só acessa o próprio cadastro
+      parameters:
+        - { $ref: '#/components/parameters/IdPath' }
+      responses:
+        '200':
+          description: Paciente
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Paciente' }
+        '401': { $ref: '#/components/responses/NaoAutenticado' }
+        '403': { $ref: '#/components/responses/SemPermissao' }
+        '404': { $ref: '#/components/responses/NaoEncontrado' }
+    patch:
+      tags: [Pacientes]
+      summary: Atualizar cadastro do paciente (RF006)
+      parameters:
+        - { $ref: '#/components/parameters/IdPath' }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/PacienteUpdate' }
+      responses:
+        '200':
+          description: Atualizado
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Paciente' }
+        '400': { $ref: '#/components/responses/RequisicaoInvalida' }
+        '401': { $ref: '#/components/responses/NaoAutenticado' }
+        '403': { $ref: '#/components/responses/SemPermissao' }
+        '404': { $ref: '#/components/responses/NaoEncontrado' }
+
+  /profissionais:
+    post:
+      tags: [Profissionais]
+      summary: Cadastrar profissional de saúde (RF007). Perfil ADMINISTRADOR
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/ProfissionalCreate' }
+      responses:
+        '201':
+          description: Criado
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Profissional' }
+        '400': { $ref: '#/components/responses/RequisicaoInvalida' }
+        '401': { $ref: '#/components/responses/NaoAutenticado' }
+        '403': { $ref: '#/components/responses/SemPermissao' }
+        '409': { $ref: '#/components/responses/Conflito' }
+    get:
+      tags: [Profissionais]
+      summary: Pesquisar profissionais por nome e/ou especialidade (RF011)
+      parameters:
+        - { name: nome, in: query, schema: { type: string } }
+        - { name: especialidadeId, in: query, schema: { type: string, format: uuid } }
+        - { $ref: '#/components/parameters/Page' }
+        - { $ref: '#/components/parameters/Size' }
+      responses:
+        '200':
+          description: Lista de profissionais ativos da clínica
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/Profissional' }
+        '401': { $ref: '#/components/responses/NaoAutenticado' }
+
+  /profissionais/{id}:
+    get:
+      tags: [Profissionais]
+      summary: Consultar profissional
+      parameters:
+        - { $ref: '#/components/parameters/IdPath' }
+      responses:
+        '200':
+          description: Profissional
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Profissional' }
+        '401': { $ref: '#/components/responses/NaoAutenticado' }
+        '404': { $ref: '#/components/responses/NaoEncontrado' }
+    patch:
+      tags: [Profissionais]
+      summary: Atualizar ou desativar profissional (RF007). Perfil ADMINISTRADOR
+      parameters:
+        - { $ref: '#/components/parameters/IdPath' }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                nome: { type: string }
+                registroProfissional: { type: string }
+                conselho: { type: string }
+                ativo: { type: boolean }
+      responses:
+        '200':
+          description: Atualizado
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Profissional' }
+        '400': { $ref: '#/components/responses/RequisicaoInvalida' }
+        '401': { $ref: '#/components/responses/NaoAutenticado' }
+        '403': { $ref: '#/components/responses/SemPermissao' }
+        '404': { $ref: '#/components/responses/NaoEncontrado' }
+
+  /profissionais/{id}/especialidades:
+    put:
+      tags: [Profissionais]
+      summary: Associar profissional às especialidades (RF009). Perfil ADMINISTRADOR
+      parameters:
+        - { $ref: '#/components/parameters/IdPath' }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [especialidadeIds]
+              properties:
+                especialidadeIds:
+                  type: array
+                  items: { type: string, format: uuid }
+      responses:
+        '200':
+          description: Associação registrada
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Profissional' }
+        '401': { $ref: '#/components/responses/NaoAutenticado' }
+        '403': { $ref: '#/components/responses/SemPermissao' }
+        '404': { $ref: '#/components/responses/NaoEncontrado' }
+
+  /especialidades:
+    get:
+      tags: [Especialidades]
+      summary: Listar especialidades disponíveis (RF010)
+      responses:
+        '200':
+          description: Especialidades ativas da clínica
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/Especialidade' }
+        '401': { $ref: '#/components/responses/NaoAutenticado' }
+    post:
+      tags: [Especialidades]
+      summary: Cadastrar especialidade (RF008). Perfil ADMINISTRADOR
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [nome]
+              properties:
+                nome: { type: string, maxLength: 120 }
+                descricao: { type: string, maxLength: 500 }
+      responses:
+        '201':
+          description: Criada
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Especialidade' }
+        '400': { $ref: '#/components/responses/RequisicaoInvalida' }
+        '401': { $ref: '#/components/responses/NaoAutenticado' }
+        '403': { $ref: '#/components/responses/SemPermissao' }
+        '409': { $ref: '#/components/responses/Conflito' }
+
+  /especialidades/{id}:
+    patch:
+      tags: [Especialidades]
+      summary: Atualizar ou desativar especialidade (RF008). Perfil ADMINISTRADOR
+      parameters:
+        - { $ref: '#/components/parameters/IdPath' }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                nome: { type: string, maxLength: 120 }
+                descricao: { type: string, maxLength: 500 }
+                ativa: { type: boolean }
+      responses:
+        '200':
+          description: Atualizada
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Especialidade' }
+        '400': { $ref: '#/components/responses/RequisicaoInvalida' }
+        '401': { $ref: '#/components/responses/NaoAutenticado' }
+        '403': { $ref: '#/components/responses/SemPermissao' }
+        '404': { $ref: '#/components/responses/NaoEncontrado' }
+
+  /disponibilidades:
+    get:
+      tags: [Disponibilidades]
+      summary: Consultar horários de um profissional (RF012)
+      parameters:
+        - { name: profissionalId, in: query, required: true, schema: { type: string, format: uuid } }
+        - { name: de, in: query, schema: { type: string, format: date-time } }
+        - { name: ate, in: query, schema: { type: string, format: date-time } }
+        - { name: status, in: query, schema: { $ref: '#/components/schemas/StatusDisponibilidade' } }
+      responses:
+        '200':
+          description: Horários do profissional (por padrão, apenas DISPONIVEL)
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/Disponibilidade' }
+        '401': { $ref: '#/components/responses/NaoAutenticado' }
+    post:
+      tags: [Disponibilidades]
+      summary: Cadastrar horário de atendimento (RF013). Perfil PROFISSIONAL
+      description: O profissional é o do token.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/DisponibilidadeRequest' }
+      responses:
+        '201':
+          description: Criada
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Disponibilidade' }
+        '400': { $ref: '#/components/responses/RequisicaoInvalida' }
+        '401': { $ref: '#/components/responses/NaoAutenticado' }
+        '403': { $ref: '#/components/responses/SemPermissao' }
+        '409': { $ref: '#/components/responses/Conflito' }
+
+  /disponibilidades/{id}:
+    patch:
+      tags: [Disponibilidades]
+      summary: Atualizar horário (RF013). Perfil PROFISSIONAL
+      parameters:
+        - { $ref: '#/components/parameters/IdPath' }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/DisponibilidadeRequest' }
+      responses:
+        '200':
+          description: Atualizada
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Disponibilidade' }
+        '400': { $ref: '#/components/responses/RequisicaoInvalida' }
+        '401': { $ref: '#/components/responses/NaoAutenticado' }
+        '403': { $ref: '#/components/responses/SemPermissao' }
+        '404': { $ref: '#/components/responses/NaoEncontrado' }
+        '409': { $ref: '#/components/responses/Conflito' }
+
+  /disponibilidades/bloqueios:
+    post:
+      tags: [Disponibilidades]
+      summary: Bloquear horário (RF013, RF026). Perfil PROFISSIONAL
+      description: |
+        Verifica agendamentos ativos (AGENDADO ou CONFIRMADO) no período e grava o bloqueio na mesma transação.
+        Se houver agendamento ativo, responde 409 e o bloqueio não é gravado.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [disponibilidadeId]
+              properties:
+                disponibilidadeId: { type: string, format: uuid }
+                motivo: { type: string, maxLength: 300 }
+      responses:
+        '200':
+          description: Horário bloqueado
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Disponibilidade' }
+        '401': { $ref: '#/components/responses/NaoAutenticado' }
+        '403': { $ref: '#/components/responses/SemPermissao' }
+        '404': { $ref: '#/components/responses/NaoEncontrado' }
+        '409':
+          description: Existe agendamento ativo no período (BLOQUEIO_NAO_PERMITIDO)
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Erro' }
+
+  /agendamentos:
+    post:
+      tags: [Agendamentos]
+      summary: Agendar consulta (RF014, RF015, RF018)
+      description: |
+        PACIENTE: o paciente é o do token (não enviar `pacienteId`).
+        RECEPCIONISTA: `pacienteId` obrigatório (agendamento em nome do paciente).
+        A disponibilidade precisa pertencer ao `profissionalId` informado.
+        Duas requisições concorrentes para o mesmo horário: a segunda recebe 409 (índice único parcial no banco).
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/AgendamentoRequest' }
+      responses:
+        '201':
+          description: Consulta agendada (status AGENDADO)
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/AgendamentoResponse' }
+        '400': { $ref: '#/components/responses/RequisicaoInvalida' }
+        '401': { $ref: '#/components/responses/NaoAutenticado' }
+        '403': { $ref: '#/components/responses/SemPermissao' }
+        '404': { $ref: '#/components/responses/NaoEncontrado' }
+        '409':
+          description: Horário indisponível ou conflito de agendamento (CONFLITO_AGENDAMENTO)
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Erro' }
+    get:
+      tags: [Agendamentos]
+      summary: Consultar agendamentos e histórico (RF019). Minhas Consultas
+      description: PACIENTE e PROFISSIONAL veem apenas os próprios. RECEPCIONISTA e ADMINISTRADOR veem os da clínica.
+      parameters:
+        - { name: pacienteId, in: query, schema: { type: string, format: uuid } }
+        - { name: profissionalId, in: query, schema: { type: string, format: uuid } }
+        - { name: status, in: query, schema: { $ref: '#/components/schemas/StatusAgendamento' } }
+        - { name: de, in: query, schema: { type: string, format: date-time } }
+        - { name: ate, in: query, schema: { type: string, format: date-time } }
+        - { $ref: '#/components/parameters/Page' }
+        - { $ref: '#/components/parameters/Size' }
+      responses:
+        '200':
+          description: Lista de agendamentos
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/AgendamentoResponse' }
+        '401': { $ref: '#/components/responses/NaoAutenticado' }
+
+  /agendamentos/{id}:
+    get:
+      tags: [Agendamentos]
+      summary: Consultar agendamento
+      parameters:
+        - { $ref: '#/components/parameters/IdPath' }
+      responses:
+        '200':
+          description: Agendamento
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/AgendamentoResponse' }
+        '401': { $ref: '#/components/responses/NaoAutenticado' }
+        '403': { $ref: '#/components/responses/SemPermissao' }
+        '404': { $ref: '#/components/responses/NaoEncontrado' }
+    patch:
+      tags: [Agendamentos]
+      summary: Remarcar consulta para outra disponibilidade (RF017)
+      description: O horário anterior é liberado e o novo é reservado na mesma transação, sem gerar consultas duplicadas.
+      parameters:
+        - { $ref: '#/components/parameters/IdPath' }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [novaDisponibilidadeId]
+              properties:
+                novaDisponibilidadeId: { type: string, format: uuid }
+      responses:
+        '200':
+          description: Remarcada
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/AgendamentoResponse' }
+        '400': { $ref: '#/components/responses/RequisicaoInvalida' }
+        '401': { $ref: '#/components/responses/NaoAutenticado' }
+        '403': { $ref: '#/components/responses/SemPermissao' }
+        '404': { $ref: '#/components/responses/NaoEncontrado' }
+        '409': { $ref: '#/components/responses/Conflito' }
+
+  /agendamentos/{id}/cancelamento:
+    patch:
+      tags: [Agendamentos]
+      summary: Cancelar consulta (RF016)
+      description: Status passa a CANCELADO e a disponibilidade volta a DISPONIVEL, conforme as regras de cancelamento (a confirmar com o PO).
+      parameters:
+        - { $ref: '#/components/parameters/IdPath' }
+      responses:
+        '200':
+          description: Cancelada
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/AgendamentoResponse' }
+        '401': { $ref: '#/components/responses/NaoAutenticado' }
+        '403': { $ref: '#/components/responses/SemPermissao' }
+        '404': { $ref: '#/components/responses/NaoEncontrado' }
+        '409': { $ref: '#/components/responses/Conflito' }
+
+  /agendamentos/{id}/confirmacao:
+    patch:
+      tags: [Agendamentos]
+      summary: Confirmar presença na consulta (AGENDADO para CONFIRMADO)
+      parameters:
+        - { $ref: '#/components/parameters/IdPath' }
+      responses:
+        '200':
+          description: Confirmada
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/AgendamentoResponse' }
+        '401': { $ref: '#/components/responses/NaoAutenticado' }
+        '403': { $ref: '#/components/responses/SemPermissao' }
+        '404': { $ref: '#/components/responses/NaoEncontrado' }
+        '409': { $ref: '#/components/responses/Conflito' }
+
+  /agendamentos/{id}/atendimento:
+    post:
+      tags: [Atendimentos]
+      summary: Registrar comparecimento ou ausência (RF020). Perfis PROFISSIONAL e RECEPCIONISTA
+      parameters:
+        - { $ref: '#/components/parameters/IdPath' }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [presenca]
+              properties:
+                presenca: { $ref: '#/components/schemas/StatusPresenca' }
+                observacao: { type: string, maxLength: 1000 }
+      responses:
+        '201':
+          description: Registro criado; o agendamento passa a REALIZADO
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/AgendamentoResponse' }
+        '401': { $ref: '#/components/responses/NaoAutenticado' }
+        '403': { $ref: '#/components/responses/SemPermissao' }
+        '404': { $ref: '#/components/responses/NaoEncontrado' }
+        '409': { $ref: '#/components/responses/Conflito' }
+
+  /relatorios/consultas:
+    get:
+      tags: [Relatórios]
+      summary: Relatório de agendamentos, cancelamentos e ausências (RF023, prioridade Could). Perfil ADMINISTRADOR
+      parameters:
+        - { name: de, in: query, required: true, schema: { type: string, format: date } }
+        - { name: ate, in: query, required: true, schema: { type: string, format: date } }
+      responses:
+        '200':
+          description: Totais do período
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  periodoInicio: { type: string, format: date }
+                  periodoFim: { type: string, format: date }
+                  totalAgendamentos: { type: integer }
+                  totalCancelamentos: { type: integer }
+                  totalAusencias: { type: integer }
+        '400': { $ref: '#/components/responses/RequisicaoInvalida' }
+        '401': { $ref: '#/components/responses/NaoAutenticado' }
+        '403': { $ref: '#/components/responses/SemPermissao' }
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+
+  parameters:
+    IdPath:
+      name: id
+      in: path
+      required: true
+      schema: { type: string, format: uuid }
+    Page:
+      name: page
+      in: query
+      schema: { type: integer, minimum: 0, default: 0 }
+    Size:
+      name: size
+      in: query
+      schema: { type: integer, minimum: 1, maximum: 100, default: 20 }
+
+  responses:
+    RequisicaoInvalida:
+      description: Dados de entrada inválidos
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Erro' }
+    NaoAutenticado:
+      description: Token ausente, expirado ou inválido, ou credenciais incorretas
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Erro' }
+    SemPermissao:
+      description: Perfil sem permissão ou recurso de outra clínica
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Erro' }
+    NaoEncontrado:
+      description: Recurso não encontrado na clínica do usuário
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Erro' }
+    Conflito:
+      description: Conflito com o estado atual do recurso
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Erro' }
+
+  schemas:
+    Erro:
+      type: object
+      properties:
+        timestamp: { type: string, format: date-time }
+        status: { type: integer, example: 409 }
+        codigo: { type: string, example: CONFLITO_AGENDAMENTO }
+        mensagem: { type: string, example: Horário indisponível }
+        detalhes:
+          type: array
+          items:
+            type: object
+            properties:
+              campo: { type: string }
+              mensagem: { type: string }
+
+    PerfilUsuario:
+      type: string
+      enum: [PACIENTE, PROFISSIONAL, RECEPCIONISTA, ADMINISTRADOR]
+    StatusUsuario:
+      type: string
+      enum: [ATIVO, INATIVO, BLOQUEADO]
+    StatusDisponibilidade:
+      type: string
+      enum: [DISPONIVEL, BLOQUEADO, AGENDADO]
+    StatusAgendamento:
+      type: string
+      enum: [AGENDADO, CONFIRMADO, CANCELADO, REALIZADO]
+    StatusPresenca:
+      type: string
+      enum: [PRESENTE, AUSENTE]
+
+    LoginRequest:
+      type: object
+      required: [email, senha]
+      properties:
+        email: { type: string, format: email }
+        senha: { type: string, format: password }
+        clinicaId:
+          type: string
+          format: uuid
+          description: Necessário apenas se o mesmo e-mail existir em mais de uma clínica.
+    LoginResponse:
+      type: object
+      properties:
+        token: { type: string, description: JWT assinado }
+        tipo: { type: string, example: Bearer }
+        expiraEm: { type: string, format: date-time }
+        perfil: { $ref: '#/components/schemas/PerfilUsuario' }
+
+    UsuarioCreate:
+      type: object
+      required: [nome, email, senha, perfil]
+      properties:
+        nome: { type: string, maxLength: 160 }
+        email: { type: string, format: email, maxLength: 254 }
+        senha: { type: string, format: password, minLength: 8 }
+        telefone: { type: string, maxLength: 25 }
+        perfil: { $ref: '#/components/schemas/PerfilUsuario' }
+    Usuario:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        nome: { type: string }
+        email: { type: string, format: email }
+        telefone: { type: string }
+        status: { $ref: '#/components/schemas/StatusUsuario' }
+        papeis:
+          type: array
+          items: { $ref: '#/components/schemas/PerfilUsuario' }
+
+    PacienteCreate:
+      type: object
+      required: [nome, email]
+      properties:
+        clinicaId: { type: string, format: uuid, description: Obrigatório somente no autorregistro anônimo }
+        nome: { type: string, maxLength: 160 }
+        email: { type: string, format: email }
+        senha: { type: string, format: password, minLength: 8 }
+        telefone: { type: string, maxLength: 25 }
+        cpf: { type: string, maxLength: 14 }
+        dataNascimento: { type: string, format: date }
+        observacoesCadastrais: { type: string, maxLength: 1000 }
+    PacienteUpdate:
+      type: object
+      properties:
+        nome: { type: string }
+        telefone: { type: string }
+        cpf: { type: string }
+        dataNascimento: { type: string, format: date }
+        observacoesCadastrais: { type: string, maxLength: 1000 }
+    Paciente:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        usuarioId: { type: string, format: uuid }
+        nome: { type: string }
+        email: { type: string, format: email }
+        telefone: { type: string }
+        cpf: { type: string }
+        dataNascimento: { type: string, format: date }
+        observacoesCadastrais: { type: string }
+
+    ProfissionalCreate:
+      type: object
+      required: [nome, email, registroProfissional, conselho]
+      properties:
+        nome: { type: string, maxLength: 160 }
+        email: { type: string, format: email }
+        senha: { type: string, format: password, minLength: 8 }
+        registroProfissional: { type: string, maxLength: 40 }
+        conselho: { type: string, maxLength: 40 }
+        especialidadeIds:
+          type: array
+          items: { type: string, format: uuid }
+    Profissional:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        usuarioId: { type: string, format: uuid }
+        nome: { type: string }
+        registroProfissional: { type: string }
+        conselho: { type: string }
+        ativo: { type: boolean }
+        especialidades:
+          type: array
+          items: { $ref: '#/components/schemas/Especialidade' }
+
+    Especialidade:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        nome: { type: string }
+        descricao: { type: string }
+        ativa: { type: boolean }
+
+    DisponibilidadeRequest:
+      type: object
+      required: [inicio, fim]
+      properties:
+        inicio: { type: string, format: date-time }
+        fim: { type: string, format: date-time, description: Deve ser posterior ao início }
+    Disponibilidade:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        profissionalId: { type: string, format: uuid }
+        inicio: { type: string, format: date-time }
+        fim: { type: string, format: date-time }
+        status: { $ref: '#/components/schemas/StatusDisponibilidade' }
+        motivoBloqueio: { type: string }
+
+    AgendamentoRequest:
+      type: object
+      required: [profissionalId, disponibilidadeId]
+      properties:
+        pacienteId:
+          type: string
+          format: uuid
+          description: Obrigatório somente para RECEPCIONISTA. Para PACIENTE vale o do token.
+        profissionalId: { type: string, format: uuid }
+        disponibilidadeId: { type: string, format: uuid }
+        observacao: { type: string, maxLength: 1000 }
+      example:
+        pacienteId: 3f1c2b9e-7a54-4d1e-9c0b-2f6a8e5d1a10
+        profissionalId: 9b2e4c7a-1d38-4f6b-8a52-6c1e0d7f3b44
+        disponibilidadeId: c7a1e5d2-4b90-4e3a-a6f1-8d2b3c9e0f57
+    AgendamentoResponse:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        pacienteId: { type: string, format: uuid }
+        pacienteNome: { type: string }
+        profissionalId: { type: string, format: uuid }
+        profissionalNome: { type: string }
+        disponibilidadeId: { type: string, format: uuid }
+        inicio: { type: string, format: date-time }
+        fim: { type: string, format: date-time }
+        status: { $ref: '#/components/schemas/StatusAgendamento' }
+        observacao: { type: string }
+      example:
+        id: 5d0e8a31-6b2c-4f79-b1a4-9e3c7d2f0a68
+        pacienteId: 3f1c2b9e-7a54-4d1e-9c0b-2f6a8e5d1a10
+        pacienteNome: Maria Souza
+        profissionalId: 9b2e4c7a-1d38-4f6b-8a52-6c1e0d7f3b44
+        profissionalNome: Dr. João Lima
+        disponibilidadeId: c7a1e5d2-4b90-4e3a-a6f1-8d2b3c9e0f57
+        inicio: '2026-11-15T14:00:00-03:00'
+        fim: '2026-11-15T14:30:00-03:00'
+        status: AGENDADO
