@@ -1,4 +1,4 @@
-ittaCare — Sprint 1: Caso de Uso Agendar Consulta
+VittaCare — Sprint 1: Caso de Uso Agendar Consulta
 Bloco 8 — Documentação para Desenvolvimento
 
 A Sprint será baseada no caso de uso UC01 — Agendar Consulta, uma das principais funcionalidades do VittaCare.
