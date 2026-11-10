@@ -1,110 +1,53 @@
-5. Git Workflow — Estratégia de Versionamento
-5.1. Objetivo
-O Git Workflow do VittaCare tem como objetivo estabelecer um padrão de versionamento e colaboração para a futura equipe de desenvolvimento.
+# ============================================================
+# VittaCare — .gitignore
+# ============================================================
 
-Essa estratégia permitirá organizar alterações no código-fonte, controlar versões, revisar contribuições e reduzir conflitos durante o desenvolvimento.
+# ---------- Segredos e variáveis de ambiente ----------
+# O modelo (.env.example) continua versionado.
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+*.p12
+*.jks
+secrets/
+application-local.yml
+application-local.properties
 
-Será utilizado o Git como sistema de controle de versão e o GitHub como plataforma de hospedagem e colaboração.
-5.2. Estratégia de branches
-O projeto adotará um fluxo de trabalho baseado em branches, com separação entre a versão principal, a integração e o desenvolvimento de funcionalidades.
-Branch	Finalidade
-main	Armazenar versões estáveis e aprovadas do projeto.
-develop	Integrar funcionalidades revisadas antes de uma versão estável.
-feature/*	Desenvolver novas funcionalidades.
-fix/*	Corrigir defeitos identificados durante o desenvolvimento.
-hotfix/*	Corrigir problemas urgentes em versões estáveis.
-docs/*	Criar ou atualizar documentação técnica.
+# ---------- Java / Spring Boot ----------
+# Maven
+target/
+!.mvn/wrapper/maven-wrapper.jar
+# Gradle
+.gradle/
+build/
+!gradle/wrapper/gradle-wrapper.jar
+# Compilados e pacotes
+*.class
+*.jar
+*.war
+*.ear
+hs_err_pid*
+replay_pid*
 
-Exemplos de branches:
+# ---------- Node / React ----------
+node_modules/
+dist/
+.vite/
+.cache/
+.eslintcache
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+# Os arquivos de lock (package-lock.json, yarn.lock, pnpm-lock.yaml)
+# DEVEM ser versionados.
 
-feature/cadastro-paciente
-feature/agendamento-consulta
-feature/autenticacao
-fix/validacao-horario
-docs/contrato-api
-hotfix/falha-autenticacao
-
-
-
-5.3. Padrão de commits
-Os commits deverão seguir o padrão Conventional Commits, facilitando a identificação das alterações realizadas.
-Tipo	Descrição
-feat	Adição de funcionalidade
-fix	Correção de erro
-docs	Atualização de documentação
-refactor	Melhoria interna do código
-test	Inclusão ou atualização de testes
-chore	Manutenção e configuração
-style	Ajustes de formatação sem alterar o comportamento
-
-Exemplos:
-
-git commit -m "feat: adicionar cadastro de pacientes"
-
-git commit -m "fix: corrigir conflito de horarios"
-
-git commit -m "docs: atualizar contrato OpenAPI"
-
-git commit -m "test: adicionar testes de agendamento"
-
-
-
-5.4. Processo de desenvolvimento
-O fluxo de trabalho previsto será:
-1. Atualizar a branch develop
-   
-   Obter as alterações mais recentes do repositório.
-2. Criar uma branch de trabalho
-   
-   Utilizar um nome que identifique a funcionalidade ou correção.
-3. Realizar alterações
-   
-   Seguir os padrões de código estabelecidos no projeto.
-4. Executar verificações
-   
-   Realizar testes, validações e análise estática quando aplicável.
-5. Enviar alterações ao GitHub
-   
-   Publicar a branch e abrir um Pull Request.
-6. Revisar e integrar
-   
-   Após aprovação, integrar as alterações à develop.
-
-5.5. Pull Requests
-Todo Pull Request deverá conter:
-- Título objetivo.
-- Descrição das alterações realizadas.
-- Identificação da tarefa ou história de usuário relacionada.
-- Evidências dos testes executados.
-- Identificação de possíveis impactos.
-- Solicitação de revisão por outro integrante da equipe.
-Exemplo:
-PR #01 — Cadastro de Pacientes
-
-Origem: feature/cadastro-paciente
-
-Destino: develop
-
-Descrição: proposta de inclusão do módulo de cadastro de pacientes, com validação dos campos obrigatórios e tratamento de erros.
-
-Critérios para aprovação:
-- Código conforme os padrões definidos.
-- Validação dos dados de entrada.
-- Testes automatizados relevantes.
-- Documentação atualizada.
-- Aprovação de pelo menos um revisor.
-
-5.6. Revisão de código
-A revisão de código terá como objetivo identificar problemas antes da integração das alterações.
-
-Os principais critérios serão:
-1. Legibilidade e organização.
-2. Conformidade com os padrões estabelecidos.
-3. Ausência de duplicação desnecessária.
-4. Tratamento adequado de exceções.
-5. Segurança e proteção dos dados.
-6. Cobertura dos testes relevantes.
-7. Documentação das alterações.
-As branches main e develop deverão ser protegidas contra alterações diretas, exigindo Pull Requests e verificações antes da integração.
-5.7. Critérios de conclusão
-O Git Workflow estará adequadamente definido quando houver uma estratégia documentada para criação de branches, padronização de commits, revisão de Pull Requests, integração de alterações e gerenciamento de versões.
+# ---------- Testes e cobertura ----------
+coverage/
+.nyc_output/
+jacoco/
+playwright-report/
+test-results/
+blo
